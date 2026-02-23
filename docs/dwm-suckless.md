@@ -49,16 +49,29 @@ Instead of a traditional package manager workflow, you **fork the source**, make
 
 Set lean USE flags that enable X without pulling in heavy desktop environments.
 
-> ℹ️ The helper script [`scripts/dwm/01-make-conf.sh`](../scripts/dwm/01-make-conf.sh) can configure this automatically.
+> ℹ️ The helper script [`scripts/dwm/01-make-conf.sh`](../scripts/dwm/01-make-conf.sh) configures this automatically. It will:
+> - Detect your CPU microarchitecture and set optimal `CFLAGS` (`-march=znver5` for Zen 5, etc.)
+> - Detect CPU instruction-set flags via `cpuid2cpuflags` (or fall back to `/proc/cpuinfo`) and set `CPU_FLAGS_X86`
+> - Detect your GPU and set `VIDEO_CARDS` (e.g. `amdgpu radeonsi` for RDNA 3)
+> - Set `ACCEPT_KEYWORDS="~amd64"` for cutting-edge hardware support
 
 Edit `/etc/portage/make.conf`:
 
 ```bash
+# Compiler optimisation — script auto-detects -march for your CPU
+# (values below are for an AMD Ryzen 9 9800X3D)
+CFLAGS="-march=znver5 -O2 -pipe"
+CXXFLAGS="${CFLAGS}"
+
+# CPU instruction-set flags — auto-detected by the script
+CPU_FLAGS_X86="aes avx avx2 avx512f avx512dq avx512cd avx512bw avx512vl avx512vbmi avx512vbmi2 bmi1 bmi2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 sse4a ssse3"
+
 # Minimal X USE flags — no KDE, GNOME, GTK, or Plasma
-USE="X -kde -gnome -plasma alsa"
+# vulkan for picom GLX/Vulkan backend and Vulkan apps; vaapi for GPU video decode
+USE="X -kde -gnome -plasma alsa vulkan vaapi"
 
 # Set VIDEO_CARDS for your hardware:
-#   amdgpu radeonsi  — AMD Radeon (GCN+)
+#   amdgpu radeonsi  — AMD Radeon (GCN+/RDNA)
 #   nvidia           — NVIDIA proprietary
 #   intel i965 iris  — Intel integrated
 VIDEO_CARDS="amdgpu radeonsi"
@@ -68,6 +81,10 @@ INPUT_DEVICES="libinput"
 MAKEOPTS="-j$(nproc) -l$(nproc)"
 
 ACCEPT_LICENSE="*"
+
+# ~amd64 (testing branch) — required for latest Mesa, linux-firmware, and
+# kernel support on cutting-edge hardware like Zen 5 and RDNA 3
+ACCEPT_KEYWORDS="~amd64"
 ```
 
 > ⚠️ The `-kde -gnome -plasma` flags prevent Portage from pulling in heavy dependencies. Keep this list if you want a genuinely minimal system.
