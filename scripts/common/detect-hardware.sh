@@ -115,6 +115,8 @@ detect_cpu_flags() {
         warn "cpuid2cpuflags not found — installing app-portage/cpuid2cpuflags…"
         if [[ "${EUID}" -ne 0 ]]; then
             warn "Not running as root; cannot install cpuid2cpuflags — falling back to /proc/cpuinfo"
+        # emerge --ask is intentional: the user should confirm before any
+        # package is installed, consistent with Gentoo convention.
         elif emerge --ask app-portage/cpuid2cpuflags; then
             ok "app-portage/cpuid2cpuflags installed"
         else
