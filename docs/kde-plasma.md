@@ -63,17 +63,29 @@ eselect profile show
 
 Edit `/etc/portage/make.conf` to add the recommended settings for KDE Plasma 6.
 
-> ℹ️ The helper script [`scripts/kde/01-make-conf.sh`](../scripts/kde/01-make-conf.sh) can configure this automatically.
+> ℹ️ The helper script [`scripts/kde/01-make-conf.sh`](../scripts/kde/01-make-conf.sh) configures this automatically. It will:
+> - Detect your CPU microarchitecture and set optimal `CFLAGS` (`-march=znver5` for Zen 5, etc.)
+> - Detect CPU instruction-set flags via `cpuid2cpuflags` (or fall back to `/proc/cpuinfo`) and set `CPU_FLAGS_X86`
+> - Detect your GPU and set `VIDEO_CARDS` (e.g. `amdgpu radeonsi` for RDNA 3)
+> - Set `ACCEPT_KEYWORDS="~amd64"` for cutting-edge hardware support
 
 ```bash
 # Recommended /etc/portage/make.conf additions
+# (values below are for an AMD Ryzen 9 9800X3D + Radeon RX 7800 XT)
 
-# Global USE flags
+# Compiler optimisation — script auto-detects -march for your CPU
+CFLAGS="-march=znver5 -O2 -pipe"
+CXXFLAGS="${CFLAGS}"
+
+# CPU instruction-set flags — auto-detected by the script
+CPU_FLAGS_X86="aes avx avx2 avx512f avx512dq avx512cd avx512bw avx512vl avx512vbmi avx512vbmi2 bmi1 bmi2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 sse4a ssse3"
+
+# Global USE flags — vulkan for KWin Wayland compositing; vaapi for GPU video decode
 USE="X wayland dbus elogind -systemd pulseaudio kde plasma \
-     alsa bluetooth networkmanager policykit"
+     alsa bluetooth networkmanager policykit vulkan vaapi"
 
-# CPU/GPU settings — adjust VIDEO_CARDS to match your hardware:
-#   amdgpu radeonsi   — AMD Radeon (GCN+)
+# GPU — auto-detected by the script
+#   amdgpu radeonsi   — AMD Radeon (GCN+/RDNA)
 #   nvidia            — NVIDIA proprietary
 #   intel i965 iris   — Intel integrated
 VIDEO_CARDS="amdgpu radeonsi"
@@ -85,8 +97,9 @@ MAKEOPTS="-j$(nproc) -l$(nproc)"
 # Accept all licences (or whitelist as needed)
 ACCEPT_LICENSE="*"
 
-# Accept ~amd64 keyword for KDE packages
-ACCEPT_KEYWORDS="amd64"
+# ~amd64 (testing branch) — required for latest Mesa, linux-firmware, and
+# kernel support on cutting-edge hardware like Zen 5 and RDNA 3
+ACCEPT_KEYWORDS="~amd64"
 ```
 
 Apply the changes:
