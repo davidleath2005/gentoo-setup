@@ -5,12 +5,11 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
+static char *font = "JetBrainsMono Nerd Font:pixelsize=15:antialias=true:autohint=true";
 #if FONT2_PATCH
 /* Spare fonts */
 static char *font2[] = {
-/*	"Inconsolata for Powerline:pixelsize=12:antialias=true:autohint=true", */
-/*	"Hack Nerd Font Mono:pixelsize=11:antialias=true:autohint=true", */
+	"Noto Color Emoji:pixelsize=14:antialias=true:autohint=true",
 };
 #endif // FONT2_PATCH
 
@@ -165,7 +164,7 @@ unsigned int tabspaces = 8;
 
 #if ALPHA_PATCH
 /* bg opacity */
-float alpha = 0.8;
+float alpha = 0.92;
 #if ALPHA_GRADIENT_PATCH
 float grad_alpha = 0.54; //alpha value that'll change
 float stat_alpha = 0.46; //constant alpha value that'll get added to grad_alpha
@@ -186,33 +185,33 @@ char *xdndescchar = " !\"#$&'()*;<>?[\\]^`{|}~";
 
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
-	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray90",
+	/* 8 normal colors — Gruvbox Material Dark */
+	"#1d2021", /* black   */
+	"#ea6962", /* red     */
+	"#a9b665", /* green   */
+	"#d8a657", /* yellow  */
+	"#7daea3", /* blue    */
+	"#d3869b", /* magenta */
+	"#89b482", /* cyan    */
+	"#d4be98", /* white   */
 
 	/* 8 bright colors */
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
+	"#928374", /* bright black   */
+	"#ea6962", /* bright red     */
+	"#a9b665", /* bright green   */
+	"#d8a657", /* bright yellow  */
+	"#7daea3", /* bright blue    */
+	"#d3869b", /* bright magenta */
+	"#89b482", /* bright cyan    */
+	"#d4be98", /* bright white   */
 
 	[255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
-	"#add8e6", /* 256 -> cursor */
-	"#555555", /* 257 -> rev cursor*/
-	"#000000", /* 258 -> bg */
-	"#e5e5e5", /* 259 -> fg */
+	"#d4be98", /* 256 -> cursor */
+	"#1d2021", /* 257 -> rev cursor*/
+	"#1d2021", /* 258 -> bg */
+	"#d4be98", /* 259 -> fg */
 };
 
 
