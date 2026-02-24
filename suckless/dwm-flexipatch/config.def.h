@@ -529,7 +529,7 @@ static const Rule rules[] = {
 	RULE(.class = "Firefox", .tags = 1 << 7)
 	#if SWALLOW_PATCH
 	RULE(.class = "St", .isterminal = 1)
-	RULE(.class = "st-256color", .isterminal = 1)
+	RULE(.instance = "st", .isterminal = 1)
 	RULE(.title = "Event Tester", .noswallow = 1) /* xev */
 	#endif // SWALLOW_PATCH
 	#if RENAMED_SCRATCHPADS_PATCH

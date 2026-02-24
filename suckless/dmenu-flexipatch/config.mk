@@ -23,7 +23,7 @@ FREETYPEINC = /usr/include/freetype2
 #EXTRAFLAGS=-D_GNU_SOURCE
 
 # Uncomment for the alpha patch / ALPHA_PATCH
-#XRENDER = -lXrender
+XRENDER = -lXrender
 
 # Uncomment for the bidi patch / BIDI_PATCH
 #BIDILIBS = `pkg-config --libs fribidi`
