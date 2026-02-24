@@ -1,9 +1,12 @@
 [submodule "suckless/dwm-flexipatch"]
 	path = suckless/dwm-flexipatch
 	url = https://github.com/bakkeby/dwm-flexipatch.git
+	ignore = dirty
 [submodule "suckless/st-flexipatch"]
 	path = suckless/st-flexipatch
 	url = https://github.com/bakkeby/st-flexipatch.git
+	ignore = dirty
 [submodule "suckless/dmenu-flexipatch"]
 	path = suckless/dmenu-flexipatch
 	url = https://github.com/bakkeby/dmenu-flexipatch.git
+	ignore = dirty
