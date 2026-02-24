@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # scripts/dwm/03-build-suckless.sh
-# Description: Clone, configure, and build dwm, st, and dmenu from suckless.org
+# Description: Build and install dwm, st, and dmenu from the repo's
+#              suckless/  flexipatch trees (no network clone needed).
 # Usage:       bash scripts/dwm/03-build-suckless.sh
 #              (runs as normal user; sudo is used only for make install)
 # =============================================================================
@@ -19,86 +20,97 @@ if [[ "${EUID}" -eq 0 ]]; then
     exit 1
 fi
 
-SRC_DIR="${HOME}/.local/src"
-SUCKLESS_BASE="https://git.suckless.org"
+# ── Locate repo root ──────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SUCKLESS_DIR="${REPO_DIR}/suckless"
 
-TOOLS=(dwm st dmenu)
+# ── Verify suckless source trees exist ────────────────────────────────────────
+TOOLS=("dwm-flexipatch" "st-flexipatch" "dmenu-flexipatch")
+BINNAMES=("dwm" "st" "dmenu")
 
-# ── 1. Create source directory ────────────────────────────────────────────────
-info "Creating source directory: ${SRC_DIR}"
-mkdir -p "${SRC_DIR}"
-ok "Directory ready: ${SRC_DIR}"
-
-# ── 2. Clone repos ────────────────────────────────────────────────────────────
 for tool in "${TOOLS[@]}"; do
-    TARGET="${SRC_DIR}/${tool}"
-    if [[ -d "${TARGET}/.git" ]]; then
-        info "${tool} already cloned — pulling latest…"
-        git -C "${TARGET}" pull --ff-only
-        ok "${tool} updated"
-    else
-        info "Cloning ${tool} from ${SUCKLESS_BASE}/${tool}…"
-        git clone "${SUCKLESS_BASE}/${tool}" "${TARGET}"
-        ok "${tool} cloned to ${TARGET}"
+    if [[ ! -d "${SUCKLESS_DIR}/${tool}" ]]; then
+        error "Missing source tree: ${SUCKLESS_DIR}/${tool}"
+        error "Clone:  git clone https://github.com/bakkeby/${tool}.git ${SUCKLESS_DIR}/${tool}"
+        exit 1
     fi
 done
 
-# ── 3. Apply patches (optional) ───────────────────────────────────────────────
-apply_patches() {
-    local tool="$1"
-    local patches_dir="${SRC_DIR}/${tool}/patches"
+ok "All suckless source trees found in ${SUCKLESS_DIR}/"
 
-    if [[ -d "${patches_dir}" ]]; then
-        info "Found patches/ directory for ${tool} — applying patches…"
-        while IFS= read -r -d '' patch; do
-            info "  Applying: $(basename "${patch}")"
-            if patch -p1 --forward --dry-run < "${patch}" &>/dev/null; then
-                patch -p1 --forward < "${patch}"
-                ok "  Applied: $(basename "${patch}")"
-            else
-                warn "  Skipping (already applied or conflict): $(basename "${patch}")"
-            fi
-        done < <(find "${patches_dir}" -name '*.diff' -o -name '*.patch' | sort -z)
+# ── Build status check ───────────────────────────────────────────────────────
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  ${GREEN}Suckless Build Status${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+for i in "${!BINNAMES[@]}"; do
+    bin="${BINNAMES[$i]}"
+    tool="${TOOLS[$i]}"
+    if command -v "${bin}" &>/dev/null; then
+        installed_path=$(command -v "${bin}")
+        echo -e "  ${GREEN}●${NC} ${bin} — installed at ${installed_path}"
     else
-        info "No patches/ directory for ${tool} — skipping patch step"
-        info "  To add patches: place .diff files in ${patches_dir}/"
+        echo -e "  ${RED}○${NC} ${bin} — not installed"
     fi
-}
-
-for tool in "${TOOLS[@]}"; do
-    cd "${SRC_DIR}/${tool}"
-    apply_patches "${tool}"
-done
-
-# ── 4. Copy config.def.h → config.h ──────────────────────────────────────────
-for tool in "${TOOLS[@]}"; do
-    CONFIG_DEF="${SRC_DIR}/${tool}/config.def.h"
-    CONFIG_H="${SRC_DIR}/${tool}/config.h"
-
-    if [[ -f "${CONFIG_H}" ]]; then
-        ok "${tool}/config.h already exists — not overwriting"
-        info "  Edit ${CONFIG_H} to customise, then re-run this script to rebuild"
+    if [[ -f "${SUCKLESS_DIR}/${tool}/patches.h" ]]; then
+        echo -e "    patches.h: ${GREEN}configured${NC}"
     else
-        info "Copying config.def.h → config.h for ${tool}…"
-        cp "${CONFIG_DEF}" "${CONFIG_H}"
-        ok "${tool}/config.h created"
+        echo -e "    patches.h: ${YELLOW}using defaults (patches.def.h)${NC}"
+    fi
+    if [[ -f "${SUCKLESS_DIR}/${tool}/config.h" ]]; then
+        echo -e "    config.h:  ${GREEN}customised${NC}"
+    else
+        echo -e "    config.h:  ${YELLOW}using defaults (config.def.h)${NC}"
     fi
 done
+echo ""
 
-# ── 5. Build and install each tool ───────────────────────────────────────────
-for tool in "${TOOLS[@]}"; do
-    info "Building ${tool}…"
-    cd "${SRC_DIR}/${tool}"
-    sudo make clean install
-    ok "${tool} built and installed"
+# ── Confirm build ─────────────────────────────────────────────────────────────
+read -rp "  Build and install all suckless tools? [Y/n]: " yn
+yn="${yn:-Y}"
+if [[ "${yn}" =~ ^[Nn]$ ]]; then
+    info "Aborted."
+    exit 0
+fi
+
+# ── Build and install each tool ───────────────────────────────────────────────
+for i in "${!TOOLS[@]}"; do
+    tool="${TOOLS[$i]}"
+    bin="${BINNAMES[$i]}"
+    src="${SUCKLESS_DIR}/${tool}"
+
+    echo ""
+    echo -e "${CYAN}──────────────────────────────────────────────────────────${NC}"
+    info "Building ${bin} (from ${tool})…"
+    echo -e "${CYAN}──────────────────────────────────────────────────────────${NC}"
+
+    cd "${src}"
+
+    # Ensure patches.h and config.h exist (flexipatch copies from .def.h if missing)
+    if [[ ! -f "patches.h" && -f "patches.def.h" ]]; then
+        info "  Copying patches.def.h → patches.h"
+        cp patches.def.h patches.h
+    fi
+    if [[ ! -f "config.h" && -f "config.def.h" ]]; then
+        info "  Copying config.def.h → config.h"
+        cp config.def.h config.h
+    fi
+
+    sudo make clean install 2>&1 | tail -5
+    ok "${bin} built and installed"
 done
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 ok "Suckless tools built and installed."
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-for tool in "${TOOLS[@]}"; do
-    echo -e "  • ${tool}: $(command -v "${tool}" 2>/dev/null || echo 'not found in PATH')"
+for bin in "${BINNAMES[@]}"; do
+    loc=$(command -v "${bin}" 2>/dev/null || echo 'not found in PATH')
+    echo -e "  • ${bin}: ${loc}"
 done
 echo ""
+info "To customise: edit config.h in suckless/<tool>/ and re-run this script."
 info "Next step: bash scripts/dwm/04-xinitrc.sh"

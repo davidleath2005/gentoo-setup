@@ -27,9 +27,9 @@ Before beginning, verify the following are true on your system:
 
 - [ ] Stage 3 OpenRC Minimal install completed
 - [ ] Kernel compiled from source (`sys-kernel/gentoo-sources` or `sys-kernel/dist-kernel`)
-- [ ] GRUB bootloader installed and configured (`/boot/grub/grub.cfg` present)
+- [ ] Bootloader configured (EFI stub / efibootmgr / systemd-boot / GRUB)
 - [ ] Working network connection (`ping -c1 gentoo.org` succeeds)
-- [ ] Locale and timezone configured (`/etc/locale.gen`, `timedatectl`)
+- [ ] Locale and timezone configured (`/etc/locale.gen`, `/etc/timezone`, `/etc/conf.d/hwclock`)
 - [ ] Portage tree synced (`emerge --sync` or `emaint sync -a`)
 
 > ℹ️ You can run the helper scripts in [`scripts/kde/`](../scripts/kde/) to automate most steps below.
@@ -81,7 +81,8 @@ CXXFLAGS="${CFLAGS}"
 CPU_FLAGS_X86="aes avx avx2 avx512f avx512dq avx512cd avx512bw avx512vl avx512vbmi avx512vbmi2 bmi1 bmi2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 sse4a ssse3"
 
 # Global USE flags — vulkan for KWin Wayland compositing; vaapi for GPU video decode
-USE="X wayland dbus elogind -systemd pulseaudio kde plasma \
+# pipewire + sound-server for modern audio (replaces PulseAudio)
+USE="X wayland dbus elogind -systemd pipewire sound-server kde plasma \
      alsa bluetooth networkmanager policykit vulkan vaapi"
 
 # GPU — auto-detected by the script
@@ -265,44 +266,52 @@ loginctl session-status
 
 ## Step 8 — Audio
 
-### Option A: PipeWire (recommended)
+### PipeWire (recommended — replaces PulseAudio)
 
-PipeWire handles both PulseAudio and JACK compatibility:
+PipeWire is the modern audio/video server for Linux. It provides both PulseAudio and JACK compatibility out of the box, with lower latency and better Bluetooth audio support.
 
 ```bash
-emerge --ask media-video/pipewire
-
-# Install user-session launcher
-emerge --ask media-video/wireplumber
+emerge --ask media-libs/alsa-lib media-sound/alsa-utils media-plugins/alsa-plugins media-video/pipewire media-video/wireplumber
 ```
 
-Add to your user's autostart (or use the Plasma autostart settings):
+**Unmute ALSA** (first-time setup — ALSA defaults to muted):
+
+```bash
+amixer sset Master unmute
+amixer sset Master 80%
+```
+
+KDE Plasma auto-detects PipeWire and uses it for the audio settings panel. If you need to manually start PipeWire (e.g. on first login), add to your user's autostart:
 
 ```bash
 # ~/.config/autostart-scripts/pipewire.sh
 #!/bin/sh
 pipewire &
+sleep 0.2
 pipewire-pulse &
 wireplumber &
 ```
 
-### Option B: PulseAudio
+**Kernel requirements** (B870 Taichi / Realtek ALC codec):
 
-```bash
-emerge --ask media-sound/pulseaudio
-
-# Start at login
-rc-update add pulseaudio default  # system-wide
-# OR add to ~/.bash_profile for per-user
-echo 'pulseaudio --start' >> ~/.bash_profile
+```
+CONFIG_SND=y
+CONFIG_SND_HDA_INTEL=m
+CONFIG_SND_HDA_CODEC_REALTEK=m
+CONFIG_SND_HDA_CODEC_HDMI=m    # HDMI/DP audio from RX 7800 XT
+CONFIG_SND_USB_AUDIO=m          # USB headsets/DACs
 ```
 
 Verify audio:
 
 ```bash
-pactl info
+wpctl status          # WirePlumber / PipeWire status
+pactl info            # PulseAudio compat layer
+aplay -l              # List ALSA devices
 aplay /usr/share/sounds/alsa/Front_Left.wav
 ```
+
+> ⚠️ PulseAudio and PipeWire conflict. Do **not** install `media-sound/pulseaudio` alongside PipeWire. The `pipewire-pulse` service replaces PulseAudio.
 
 ---
 
@@ -379,8 +388,9 @@ If the display manager does not start, check:
 
 ```bash
 rc-service display-manager status
-journalctl -xe  # if journald is available
-cat /var/log/Xorg.0.log
+dmesg | tail -30          # kernel messages
+cat /var/log/Xorg.0.log   # Xorg log
+cat /var/log/messages      # OpenRC syslog
 ```
 
 ### Wayland vs X11

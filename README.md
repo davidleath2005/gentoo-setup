@@ -5,7 +5,7 @@ A collection of post-install Gentoo Linux setup guides and helper scripts.
 Assumes a completed base install with:
 - Stage 3 OpenRC Minimal
 - Kernel compiled from source (gentoo-sources / dist-kernel)
-- GRUB bootloader configured
+- Bootloader configured (EFI stub / efibootmgr / systemd-boot / GRUB)
 - Working network & locale
 
 ## Guides
@@ -47,3 +47,5 @@ or use `setup.sh` to orchestrate them interactively.
 | `scripts/common/add-user.sh` | Create a standard user with correct groups |
 | `scripts/common/detect-hardware.sh` | Shared CPU/GPU detection helpers (sourced by other scripts) |
 | `scripts/common/rebuild-clean.sh` | Deep @world rebuild, depclean, revdep-rebuild, preserved-rebuild |
+| `scripts/common/kernel-update.sh` | Kernel update with EFI stub / GRUB / systemd-boot support |
+| `scripts/common/system-info.sh` | System info: hardware, boot, services, audio, packages |

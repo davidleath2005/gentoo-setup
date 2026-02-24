@@ -68,7 +68,8 @@ CPU_FLAGS_X86="aes avx avx2 avx512f avx512dq avx512cd avx512bw avx512vl avx512vb
 
 # Minimal X USE flags — no KDE, GNOME, GTK, or Plasma
 # vulkan for picom GLX/Vulkan backend and Vulkan apps; vaapi for GPU video decode
-USE="X -kde -gnome -plasma alsa vulkan vaapi"
+# pipewire + sound-server for modern audio (replaces PulseAudio)
+USE="X -kde -gnome -plasma alsa pipewire sound-server vulkan vaapi"
 
 # Set VIDEO_CARDS for your hardware:
 #   amdgpu radeonsi  — AMD Radeon (GCN+/RDNA)
@@ -138,7 +139,8 @@ dwm and st use X core fonts or Xft fonts. Install a good selection:
 emerge --ask \
     media-fonts/terminus-font \
     media-fonts/dejavu \
-    media-fonts/noto
+    media-fonts/noto \
+    media-fonts/noto-emoji
 ```
 
 Rebuild the font cache:
@@ -158,140 +160,114 @@ fc-list | grep -i "DejaVu Sans Mono"
 
 ---
 
-## Step 4 — Clone Suckless Repos
+## Step 4 — Suckless Source Trees (Flexipatch)
 
-> ℹ️ The helper script [`scripts/dwm/03-build-suckless.sh`](../scripts/dwm/03-build-suckless.sh) handles cloning, configuring, and building automatically.
+> **This project uses [flexipatch](https://github.com/bakkeby/dwm-flexipatch)** — a fork that lets you enable/disable patches via `#define` in `patches.h` instead of manually applying `.diff` files. The source trees are included in the repo under `suckless/`.
 
-Create a directory for your suckless source trees:
+The three tools live in the repo:
 
-```bash
-mkdir -p ~/.local/src
-cd ~/.local/src
+```
+suckless/
+├── dwm-flexipatch/     # dwm with ~300 patches available
+├── st-flexipatch/      # st with ~60 patches available
+└── dmenu-flexipatch/   # dmenu with ~30 patches available
 ```
 
-Clone the three core tools:
+If the directories are empty, clone them:
 
 ```bash
-git clone https://git.suckless.org/dwm
-git clone https://git.suckless.org/st
-git clone https://git.suckless.org/dmenu
+cd suckless/
+git clone https://github.com/bakkeby/dwm-flexipatch.git
+git clone https://github.com/bakkeby/st-flexipatch.git
+git clone https://github.com/bakkeby/dmenu-flexipatch.git
 ```
 
-> ⚠️ `git.suckless.org` uses plain git. If the clone fails, check your network and try again. These repos are small (< 100 KB each).
+> No need to clone from `git.suckless.org` — flexipatch includes all upstream code plus the patch system.
 
 ---
 
 ## Step 5 — Configure config.h
 
-Each suckless tool is configured by editing `config.h` (generated from `config.def.h`).
+Each flexipatch tool is configured by editing two files:
+- **`patches.h`** — enable/disable patches with `#define` (1 = on, 0 = off)
+- **`config.h`** — colours, fonts, key bindings, layout options
 
 ### Workflow
 
 ```bash
-cd ~/.local/src/dwm
+cd suckless/dwm-flexipatch
+
+# First time: copy defaults
+cp patches.def.h patches.h
 cp config.def.h config.h
+
+# Edit patches.h to enable features
+$EDITOR patches.h
+
+# Edit config.h for visual/behaviour customisation
 $EDITOR config.h
+
+# Rebuild
+sudo make clean install
 ```
 
-Repeat for `st` and `dmenu`.
+Repeat for `st-flexipatch` and `dmenu-flexipatch`.
 
-### Key settings in `dwm/config.h`
+### This project's config.h setup
 
-```c
-/* Font — use fc-list to find available names */
-static const char *fonts[]          = { "monospace:size=10" };
+The repo ships pre-configured `patches.h` and `config.h` files with:
 
-/* Terminal emulator launched by Mod+Shift+Return */
-static const char *termcmd[]  = { "st", NULL };
+- **dwm**: Gruvbox Material Dark theme, Super key, fullgaps, pertag, systray, alpha bar, vanity gaps, ~40 patches enabled
+- **st**: Gruvbox colours, alpha 0.92, scrollback, clipboard, font size shortcuts, ~18 patches enabled
+- **dmenu**: Centered, fuzzy matching, highlight, Gruvbox colours, ~10 patches enabled
 
-/* Colour scheme */
-static const char col_gray1[]       = "#222222";  /* background */
-static const char col_gray2[]       = "#444444";  /* border normal */
-static const char col_gray3[]       = "#bbbbbb";  /* foreground */
-static const char col_gray4[]       = "#eeeeee";  /* selected foreground */
-static const char col_cyan[]        = "#005577";  /* selected background */
-```
-
-### Key settings in `st/config.h`
-
-```c
-/* Font — should match dwm for visual consistency */
-static char *font = "monospace:pixelsize=14:antialias=true:autohint=true";
-
-/* Shell */
-static char *shell = "/bin/bash";
-
-/* Colours (gruvbox dark example) */
-static const char *colorname[] = {
-    "#282828",   /* hard black */
-    "#cc241d",   /* red */
-    /* ... */
-};
-```
-
-### Key settings in `dmenu/config.h`
-
-```c
-/* Font — must match dwm */
-static const char *fonts[] = { "monospace:size=10" };
-
-/* Position: top (0) or bottom (1) of screen */
-static int topbar = 1;
-```
-
-> ℹ️ Changes to `config.h` require a recompile and reinstall. This is normal — build times are measured in seconds.
+> ℹ️ Changes to `config.h` or `patches.h` require a recompile: `sudo make clean install`. Build times are measured in seconds.
 
 ---
 
-## Step 6 — Patching
+## Step 6 — Enabling Patches (Flexipatch)
 
-Patches extend suckless tools without modifying core logic. Download patches from [https://dwm.suckless.org/patches/](https://dwm.suckless.org/patches/).
+With flexipatch, you **do not** download `.diff` files. Instead, edit `patches.h` and set defines to `1`:
 
-### Applying a patch
-
-```bash
-cd ~/.local/src/dwm
-
-# Download a patch (example: fullgaps)
-curl -O https://dwm.suckless.org/patches/fullgaps/dwm-fullgaps-20200508-7b77734.diff
-
-# Apply with patch utility
-patch -p1 < dwm-fullgaps-20200508-7b77734.diff
+```c
+// patches.h — enable desired patches
+#define BAR_ALPHA_PATCH 1
+#define BAR_SYSTRAY_PATCH 1
+#define FULLGAPS_PATCH 1
+#define PERTAG_PATCH 1
+#define VANITYGAPS_PATCH 1
 ```
 
-### Popular dwm patches
+### Popular dwm-flexipatch patches
 
-| Patch | Effect |
-|-------|--------|
-| `fullgaps` | Adds configurable gaps between windows |
-| `alpha` | Adds true transparency to the bar |
-| `pertag` | Per-tag layout settings |
-| `autostart` | Run commands from `~/.dwm/autostart.sh` |
-| `systray` | System tray in the status bar |
+| Define | Effect |
+|--------|--------|
+| `FULLGAPS_PATCH` | Configurable gaps between windows |
+| `BAR_ALPHA_PATCH` | True transparency for the bar |
+| `PERTAG_PATCH` | Per-tag layout settings |
+| `BAR_SYSTRAY_PATCH` | System tray in the bar |
+| `VANITYGAPS_PATCH` | Inner/outer gaps |
+| `STICKY_PATCH` | Sticky windows visible on all tags |
+| `SCRATCHPADS_PATCH` | Dropdown terminal / scratchpad windows |
 
-### Popular st patches
+### Popular st-flexipatch patches
 
-| Patch | Effect |
-|-------|--------|
-| `scrollback` | Mouse/keyboard scroll through terminal history |
-| `alpha` | Background transparency |
-| `bold-is-not-bright` | Better colour handling |
-| `clipboard` | Sync clipboard and primary selection |
+| Define | Effect |
+|--------|--------|
+| `SCROLLBACK_PATCH` | Mouse/keyboard scroll through history |
+| `ALPHA_PATCH` | Background transparency |
+| `BOLD_IS_NOT_BRIGHT_PATCH` | Better colour handling |
+| `CLIPBOARD_PATCH` | Sync clipboard and primary selection |
+| `FONT2_PATCH` | Fallback font support |
 
-### Resolving conflicts
-
-If a patch does not apply cleanly:
+### Rebuild after changing patches
 
 ```bash
-# patch will create .rej files showing the failed hunks
-ls *.rej
-
-# Edit the target file manually to apply the rejected hunks
-# Then remove .rej files
-rm *.rej
+cd suckless/dwm-flexipatch
+sudo make clean install
 ```
 
-> ⚠️ Conflicts are common when applying multiple patches. Apply them one at a time and resolve conflicts before moving to the next.
+> Each patch adds its code conditionally via `#if` directives — no merge conflicts, no `.rej` files.
 
 ---
 
@@ -300,16 +276,17 @@ rm *.rej
 Build and install each tool. Repeat whenever you change `config.h` or apply patches.
 
 ```bash
-# dwm
-cd ~/.local/src/dwm
+# Build and install all three tools (automated)
+bash scripts/dwm/03-build-suckless.sh
+
+# Or manually per-tool:
+cd suckless/dwm-flexipatch
 sudo make clean install
 
-# st
-cd ~/.local/src/st
+cd suckless/st-flexipatch
 sudo make clean install
 
-# dmenu
-cd ~/.local/src/dmenu
+cd suckless/dmenu-flexipatch
 sudo make clean install
 ```
 
@@ -329,49 +306,63 @@ st -v
 
 > ℹ️ The helper script [`scripts/dwm/04-xinitrc.sh`](../scripts/dwm/04-xinitrc.sh) creates `.xinitrc` and adds the auto-startx snippet automatically.
 
-Create `~/.xinitrc`:
+Create `~/.xinitrc` (or run [`scripts/dwm/04-xinitrc.sh`](../scripts/dwm/04-xinitrc.sh) which generates a full version):
 
 ```bash
 cat > ~/.xinitrc <<'EOF'
 #!/bin/sh
 
-# --- Monitor layout (adjust for your setup) ---
-# xrandr --output HDMI-1 --mode 1920x1080 --rate 60
+# D-Bus session (required for elogind, polkit, notifications)
+if command -v dbus-launch >/dev/null 2>&1 && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    eval "$(dbus-launch --sh-syntax --exit-with-x11)"
+fi
 
-# --- Wallpaper ---
-# feh --bg-fill ~/Pictures/wallpaper.jpg &
-# xwallpaper --zoom ~/Pictures/wallpaper.png &
+# Audio — PipeWire + WirePlumber
+pipewire &
+sleep 0.2
+pipewire-pulse &
+wireplumber &
 
-# --- Compositor (uncomment if installed) ---
-# picom --daemon &
+# Wallpaper
+xwallpaper --zoom ~/Pictures/wallpaper.png &
 
-# --- Notification daemon ---
-# dunst &
+# Compositor
+picom --backend glx --vsync &
 
-# --- Status bar (updates every second) ---
+# Notification daemon
+dunst &
+
+# Status bar
 while true; do
-    xsetroot -name "$(date '+%a %d %b %H:%M:%S')"
-    sleep 1
+    MEM=$(free -h | awk '/^Mem:/ {printf "%s/%s", $3, $2}')
+    DT=$(date '+%a %d %b %H:%M')
+    xsetroot -name " ${MEM} | ${DT} "
+    sleep 2
 done &
 
-# --- Launch dwm ---
-exec dwm
+# Launch dwm (restart loop — survives mod+shift+q restart)
+while true; do
+    dwm 2>/dev/null
+    sleep 0.5
+done
 EOF
 chmod +x ~/.xinitrc
 ```
 
+> The setup script generates a more complete version with CPU temperature (k10temp), volume (via `wpctl`), and auto-startx in `~/.bash_profile`.
+
 ### Autostart pattern
 
-For persistent background processes, use a loop or start them before `exec dwm`:
+Start background processes before the dwm loop:
 
 ```sh
-# Good pattern: background & before exec
-picom --daemon &
+picom --backend glx --vsync &
 dunst &
-exec dwm
+# dwm restart loop
+while true; do dwm; sleep 0.5; done
 ```
 
-> ⚠️ Never background `exec dwm` — it must be the last command and must not have `&`.
+> ⚠️ The dwm restart loop replaces `exec dwm` — it allows dwm to restart without logging you out.
 
 ---
 
@@ -396,6 +387,52 @@ To apply, log out and log back in on TTY1. X will start automatically.
 ---
 
 ## Step 10 — Recommended Extras
+
+### Audio — ALSA + PipeWire
+
+The modern audio stack for Gentoo is **ALSA** (kernel-level driver) + **PipeWire** (user-space audio server) + **WirePlumber** (session manager). PipeWire replaces PulseAudio and offers lower latency, better Bluetooth support, and screen-sharing capabilities.
+
+```bash
+# Install audio packages
+emerge --ask media-libs/alsa-lib media-sound/alsa-utils media-plugins/alsa-plugins media-video/pipewire media-video/wireplumber
+```
+
+**Unmute ALSA** (first-time setup — ALSA defaults to muted):
+
+```bash
+amixer sset Master unmute
+amixer sset Master 80%
+# Use alsamixer for an interactive TUI:
+alsamixer
+```
+
+PipeWire runs in user-space and should be started from `.xinitrc` (the setup script does this automatically):
+
+```sh
+# In ~/.xinitrc, before exec dwm:
+pipewire &
+sleep 0.2
+pipewire-pulse &   # PulseAudio compatibility
+wireplumber &       # session manager
+```
+
+**Kernel requirements** (B870 Taichi / Realtek ALC codec):
+
+```
+CONFIG_SND=y
+CONFIG_SND_HDA_INTEL=m
+CONFIG_SND_HDA_CODEC_REALTEK=m
+CONFIG_SND_HDA_CODEC_HDMI=m    # HDMI/DP audio from RX 7800 XT
+CONFIG_SND_USB_AUDIO=m          # USB headsets/DACs
+```
+
+Verify sound cards are detected:
+
+```bash
+cat /proc/asound/cards
+aplay -l
+wpctl status    # WirePlumber status
+```
 
 ### Status bar
 
