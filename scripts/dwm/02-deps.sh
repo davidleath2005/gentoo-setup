@@ -133,6 +133,12 @@ GROUP_LABELS[desktop_utils]="Desktop Utilities"
 GROUP_LABELS[system_services]="System Services"
 GROUP_LABELS[amd_gpu]="AMD GPU (RDNA 3)"
 
+# ── Helper: check whether a package atom has ebuilds in the portage tree ─────
+ebuild_available() {
+    local atom="$1"
+    emerge --pretend --quiet "${atom}" &>/dev/null 2>&1
+}
+
 # ── 1. Sync portage ──────────────────────────────────────────────────────────
 info "Syncing Portage tree…"
 emaint sync -a
@@ -148,6 +154,35 @@ else
     ok "git already installed"
 fi
 
+# ── 3. Offer to enable the GURU overlay if not already active ────────────────
+echo ""
+hr
+center "Overlay Check" "${BOLD}${CYAN}"
+hr
+echo ""
+
+if eselect repository list -i 2>/dev/null | grep -q guru; then
+    ok "GURU overlay is already enabled"
+else
+    warn "The GURU overlay is not enabled."
+    info "Some packages (e.g. app-misc/brightnessctl) are only available in GURU."
+    read -rp "  Enable the GURU overlay now? [Y/n]: " enable_guru
+    enable_guru="${enable_guru:-Y}"
+    if [[ "${enable_guru}" =~ ^[Yy]$ ]]; then
+        # Ensure eselect-repository and git are present
+        if ! eselect repository help &>/dev/null 2>&1; then
+            info "Installing app-eselect/eselect-repository…"
+            emerge --ask app-eselect/eselect-repository dev-vcs/git
+        fi
+        eselect repository enable guru
+        emaint sync -r guru
+        ok "GURU overlay enabled and synced"
+    else
+        warn "GURU overlay not enabled — packages requiring it will be skipped."
+    fi
+fi
+echo ""
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  SCAN ALL PACKAGES — build a complete picture before touching anything
 # ══════════════════════════════════════════════════════════════════════════════
@@ -157,29 +192,41 @@ center "Package Status Scan" "${BOLD}${CYAN}"
 hr
 echo ""
 
-all_missing=()           # flat list of every missing package
-declare -A group_missing # per-group missing lists (for display)
+all_missing=()           # flat list of every missing package (has ebuilds)
+all_unavailable=()       # flat list of packages with no ebuilds found
+declare -A group_missing        # per-group installable missing lists (for display)
+declare -A group_unavailable    # per-group unavailable lists (for display)
 total_installed=0
 total_missing=0
+total_unavailable=0
+
+MARKER_SKIP="${YELLOW}⚠${NC}"
 
 for group in "${GROUP_ORDER[@]}"; do
     echo -e "  ${CYAN}${BOLD}${GROUP_LABELS[${group}]}${NC}"
     missing_in_group=()
+    unavailable_in_group=()
 
     for pkg in ${PKG_GROUPS[${group}]}; do
         if pkg_installed "${pkg}"; then
             printf "    ${MARKER_DONE}  %-42s ${GREEN}installed${NC}\n" "${pkg}"
             (( total_installed++ )) || true
-        else
+        elif ebuild_available "${pkg}"; then
             printf "    ${MARKER_TODO}  %-42s ${RED}missing${NC}\n" "${pkg}"
             missing_in_group+=("${pkg}")
             all_missing+=("${pkg}")
             (( total_missing++ )) || true
+        else
+            printf "    ${MARKER_SKIP}  %-42s ${YELLOW}unavailable (no ebuild)${NC}\n" "${pkg}"
+            unavailable_in_group+=("${pkg}")
+            all_unavailable+=("${pkg}")
+            (( total_unavailable++ )) || true
         fi
     done
     echo ""
 
     group_missing[${group}]="${missing_in_group[*]:-}"
+    group_unavailable[${group}]="${unavailable_in_group[*]:-}"
 done
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -189,47 +236,67 @@ hr
 center "Installation Summary" "${BOLD}${GREEN}"
 hr
 echo ""
-echo -e "  ${GREEN}Installed${NC}: ${total_installed} packages"
-echo -e "  ${RED}Missing${NC}:   ${total_missing} packages"
+echo -e "  ${GREEN}Installed${NC}:   ${total_installed} packages"
+echo -e "  ${RED}Missing${NC}:     ${total_missing} packages"
+if [[ ${total_unavailable} -gt 0 ]]; then
+    echo -e "  ${YELLOW}Unavailable${NC}: ${total_unavailable} packages (will be skipped)"
+fi
 echo ""
 
-if [[ ${total_missing} -eq 0 ]]; then
+if [[ ${total_missing} -eq 0 && ${total_unavailable} -eq 0 ]]; then
     ok "All packages are already installed — nothing to do!"
     echo ""
 else
-    echo -e "  ${BOLD}${YELLOW}The following packages will be emerged:${NC}"
-    echo ""
+    if [[ ${total_missing} -gt 0 ]]; then
+        echo -e "  ${BOLD}${YELLOW}The following packages will be emerged:${NC}"
+        echo ""
 
-    for group in "${GROUP_ORDER[@]}"; do
-        if [[ -n "${group_missing[${group}]:-}" ]]; then
-            echo -e "  ${CYAN}${GROUP_LABELS[${group}]}${NC}"
-            for pkg in ${group_missing[${group}]}; do
-                echo -e "    ${YELLOW}→${NC} ${pkg}"
-            done
-            echo ""
-        fi
-    done
-
-    hr_thin
-    echo ""
-    echo -e "  ${BOLD}emerge command:${NC}"
-    echo -e "    ${DIM}emerge --ask --verbose ${all_missing[*]}${NC}"
-    echo ""
-    hr_thin
-    echo ""
-    read -rp "  Proceed with installation? [Y/n]: " yn
-    yn="${yn:-Y}"
-    if [[ "${yn}" =~ ^[Nn]$ ]]; then
-        warn "Installation cancelled."
-        exit 0
+        for group in "${GROUP_ORDER[@]}"; do
+            if [[ -n "${group_missing[${group}]:-}" ]]; then
+                echo -e "  ${CYAN}${GROUP_LABELS[${group}]}${NC}"
+                for pkg in ${group_missing[${group}]}; do
+                    echo -e "    ${YELLOW}→${NC} ${pkg}"
+                done
+                echo ""
+            fi
+        done
     fi
 
-    echo ""
-    info "Emerging ${total_missing} package(s)…"
-    echo ""
-    emerge --ask --verbose "${all_missing[@]}"
-    echo ""
-    ok "All packages installed successfully."
+    if [[ ${total_unavailable} -gt 0 ]]; then
+        echo -e "  ${BOLD}${YELLOW}⚠ Unavailable (will be skipped):${NC}"
+        echo ""
+        for group in "${GROUP_ORDER[@]}"; do
+            if [[ -n "${group_unavailable[${group}]:-}" ]]; then
+                for pkg in ${group_unavailable[${group}]}; do
+                    echo -e "    ${YELLOW}✗${NC} ${pkg}  — no ebuild found (needs GURU overlay?)"
+                done
+            fi
+        done
+        echo ""
+    fi
+
+    if [[ ${total_missing} -gt 0 ]]; then
+        hr_thin
+        echo ""
+        echo -e "  ${BOLD}emerge command:${NC}"
+        echo -e "    ${DIM}emerge --ask --verbose ${all_missing[*]}${NC}"
+        echo ""
+        hr_thin
+        echo ""
+        read -rp "  Proceed with installation? [Y/n]: " yn
+        yn="${yn:-Y}"
+        if [[ "${yn}" =~ ^[Nn]$ ]]; then
+            warn "Installation cancelled."
+            exit 0
+        fi
+
+        echo ""
+        info "Emerging ${total_missing} package(s)…"
+        echo ""
+        emerge --ask --verbose "${all_missing[@]}"
+        echo ""
+        ok "All available packages installed successfully."
+    fi
 fi
 
 # ── Rebuild font cache ────────────────────────────────────────────────────────
@@ -360,3 +427,20 @@ echo "    • PipeWire — user-space audio server (started from xinitrc)"
 echo "    • WirePlumber — PipeWire session manager"
 echo ""
 info "Next step: bash scripts/dwm/03-build-suckless.sh  (run as your normal user)"
+
+# ── Reminder for skipped packages ────────────────────────────────────────────
+if [[ ${total_unavailable} -gt 0 ]]; then
+    echo ""
+    hr
+    center "Skipped Packages" "${BOLD}${YELLOW}"
+    hr
+    echo ""
+    warn "The following packages were skipped (no ebuilds found):"
+    for pkg in "${all_unavailable[@]}"; do
+        echo -e "    ${YELLOW}•${NC} ${pkg}"
+    done
+    echo ""
+    info "To install these later, enable the GURU overlay:"
+    echo -e "    ${DIM}eselect repository enable guru && emaint sync -r guru${NC}"
+    echo ""
+fi
