@@ -136,6 +136,30 @@ GROUP_LABELS[amd_gpu]="AMD GPU (RDNA 3)"
 # ── Helper: check whether a package atom has ebuilds in the portage tree ─────
 ebuild_available() {
     local atom="$1"
+    # Check main gentoo repo and all overlays for .ebuild files on disk
+    local portdir
+    portdir="$(portageq get_repo_path / gentoo 2>/dev/null || echo /var/db/repos/gentoo)"
+    if ls "${portdir}/${atom}"/*.ebuild &>/dev/null 2>&1; then
+        return 0
+    fi
+    # Check overlays
+    local repos_conf="/etc/portage/repos.conf"
+    if [[ -d "${repos_conf}" ]]; then
+        for conf in "${repos_conf}"/*.conf; do
+            local loc
+            loc=$(awk -F= '/^location/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' "${conf}" 2>/dev/null)
+            if [[ -n "${loc}" ]] && ls "${loc}/${atom}"/*.ebuild &>/dev/null 2>&1; then
+                return 0
+            fi
+        done
+    elif [[ -f "${repos_conf}" ]]; then
+        local loc
+        loc=$(awk -F= '/^location/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' "${repos_conf}" 2>/dev/null)
+        if [[ -n "${loc}" ]] && ls "${loc}/${atom}"/*.ebuild &>/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    # Fallback to emerge --pretend
     emerge --pretend --quiet "${atom}" &>/dev/null 2>&1
 }
 
@@ -180,6 +204,27 @@ else
     else
         warn "GURU overlay not enabled — packages requiring it will be skipped."
     fi
+fi
+echo ""
+
+# ── 4. Reconcile @world with new make.conf settings ──────────────────────────
+hr
+center "World Update" "${BOLD}${CYAN}"
+hr
+echo ""
+info "make.conf has been updated with new USE flags, ACCEPT_KEYWORDS, and VIDEO_CARDS."
+info "Running 'emerge --update --deep --newuse @world' ensures already-installed packages"
+info "are rebuilt with the new settings before scanning for missing dependencies."
+echo ""
+read -rp "  Run 'emerge --ask --update --deep --newuse @world' now? [Y/n]: " update_world
+update_world="${update_world:-Y}"
+if [[ "${update_world}" =~ ^[Yy]$ ]]; then
+    echo ""
+    emerge --ask --update --deep --newuse @world
+    ok "@world update complete"
+else
+    warn "Skipping @world update — some packages may show as unavailable due to unresolved"
+    warn "USE flag or keyword conflicts from the updated make.conf."
 fi
 echo ""
 
